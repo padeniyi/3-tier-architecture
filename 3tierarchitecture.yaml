@@ -1,0 +1,273 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "This template deploys a VPC with a CIDR Range of 10.16.0.0/16. It also creates 4 subnets in 3 AZs. We also deploy an IGW & NGW"
+
+Resources:
+  MyVPC: 
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.16.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
+
+# Internet Gateway for connections to AWS Public Services & Public Internet
+  MyIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-MyIGW
+
+# Attach Internet Gateway to VPC
+  IGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId : !Ref MyIGW 
+      VpcId: !Ref MyVPC
+
+  IGWRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC 
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-IGW
+
+  IGWRoute:
+    Type: AWS::EC2::Route
+    DependsOn: IGWAttachment
+    Properties:
+      RouteTableId: !Ref IGWRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref MyIGW
+
+# Web subnets & their association to the route table
+  WebSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.0.0/20
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [0,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-WebSubnetAZ1
+
+  WebSubnetAZ1RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref IGWRouteTable
+      SubnetId: !Ref WebSubnetAZ1
+
+
+  WebSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.48.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [1,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-WebSubnetAZ2
+
+  WebSubnetAZ2RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref IGWRouteTable
+      SubnetId: !Ref WebSubnetAZ2
+
+  WebSubnetAZ3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.96.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [2,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-WebSubnetAZ3
+
+  WebSubnetAZ3RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref IGWRouteTable
+      SubnetId: !Ref WebSubnetAZ3
+
+# EIP + NAT Gateway For Application subnets in the 3 AZs
+  ElasticIPAZ1:
+    DependsOn: IGWAttachment
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: MyVPC
+  
+  MyNGWAZ1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: 
+        Fn::GetAtt:
+         - ElasticIPAZ1
+         - AllocationId
+      SubnetId: !Ref  WebSubnetAZ1
+      
+  ElasticIPAZ2:
+    DependsOn: IGWAttachment
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: MyVPC
+  
+  MyNGWAZ2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: 
+        Fn::GetAtt:
+         - ElasticIPAZ2
+         - AllocationId
+      SubnetId: !Ref  WebSubnetAZ2
+
+  ElasticIPAZ3:
+    DependsOn: IGWAttachment
+    Type: AWS::EC2::EIP
+    Properties: 
+      Domain: MyVPC
+  
+  MyNGWAZ3:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: 
+        Fn::GetAtt:
+         - ElasticIPAZ3
+         - AllocationId
+      SubnetId: !Ref WebSubnetAZ3 
+  
+
+
+# Application subnets with their route tables & routes as well as the associations between the subnets and route tablex
+
+  AppSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.16.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [0,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ1
+
+  AppSubnetAZ1RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ1RouteTable
+
+  AppSubnetAZ1Route: 
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref AppSubnetAZ1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MyNGWAZ1
+      
+  AppSubnetAZ1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetAZ1
+      RouteTableId: !Ref AppSubnetAZ1RouteTable
+
+
+  AppSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.64.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [1,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ2
+
+
+  AppSubnetAZ2RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ2RouteTable
+
+  AppSubnetAZ2Route:  
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref AppSubnetAZ2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MyNGWAZ2
+      
+  AppSubnetAZ1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetAZ2
+      RouteTableId: !Ref AppSubnetAZ2RouteTable
+
+  AppSubnetAZ3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.112.0/20
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [2,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ3
+
+  AppSubnetAZ3RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-AppSubnetAZ1RouteTable
+
+  AppSubnetAZ3Route:
+    Type: AWS::EC2::Route
+    Properties: 
+      RouteTableId: !Ref AppSubnetAZ3RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref MyNGWAZ3
+      
+  AppSubnetAZ3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref AppSubnetAZ3
+      RouteTableId: !Ref AppSubnetAZ3RouteTable
+
+
+# Database Subnets for 3 AZs and they do not require access to the internet
+  DbSubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.32.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [0,!GetAZs '']
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-DbSubnetAZ1
+
+
+  DbSubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.80.0/20
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [1,!GetAZs '']
+      Tags:
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-DbSubnetAZ2
+        
+
+
+  DbSubnetAZ3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.16.128.0/20 
+      VpcId: !Ref MyVPC
+      AvailabilityZone: !Select [2,!GetAZs '' ]
+      Tags: 
+        - Key: Name 
+          Value: !Sub ${AWS::StackName}-DbSubnetAZ3
+
